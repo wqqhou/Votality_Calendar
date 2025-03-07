@@ -78,7 +78,6 @@ def fetch_and_cache_volatility():
         except Exception as e:
          print("GARCH model failed to converge:", e)
          garch_volatility = np.nan
-
         
         # Save the first date from the API result and the computed GARCH volatility for that day
         result['Date'].append(dates[0])
@@ -149,13 +148,36 @@ def compute_baseline_volatility(result):
     
     return comparisons
 
+def build_comparison_index(baseline_comparisons):
+    """
+    Build a dictionary indexed by date from the baseline comparisons.
+    """
+    return {comp["Date"]: comp for comp in baseline_comparisons}
+
+def get_zscore(target_date):
+    """
+    Retrieve the Z-score for a given date from the comparison index.
+    """
+    if not os.path.exists(CACHE_FILE):
+        fetch_and_cache_volatility()
+    result = get_cached_volatility()
+    baseline_comparisons = compute_baseline_volatility(result)
+    comparison_index = build_comparison_index(baseline_comparisons)
+
+    comparisons = {date: comparison_index.get(date, None) for date in target_date}
+
+# Extract the z-scores from the comparisons that exist and are not None:
+    zscores = [comp["Z-score"] for comp in comparisons.values() if comp is not None and comp["Z-score"] is not None]
+
+    if zscores:
+        average_zscore = sum(zscores) / len(zscores)
+        return round(average_zscore, 1)
+    else:
+        print("No valid Z-scores found for the selected dates.")
+
 
 if __name__ == "__main__":
     # Only fetch if running as the main script (so importing in other files doesn't re-fetch)
     if not os.path.exists(CACHE_FILE):
         fetch_and_cache_volatility()
-    result = get_cached_volatility()
-    baseline_comparisons = compute_baseline_volatility(result)
-    print(baseline_comparisons[5])
-
 

@@ -107,11 +107,11 @@ def input_events():
       - A date (in DDMMYY format) on which the event occurs.
       - An event description.
       - A list of dates (as integers) that will be used to compute the average z-score.
-      - The volatility collar (color) is determined automatically by get_volatility_color.
+      - The volatility color is determined automatically by get_volatility_color.
     
     Returns:
         events (dict): Dictionary mapping event days (as integers) to a list of event tuples.
-                        Each tuple is (description, collar, score).
+                        Each tuple is (description, color, score).
     """
     events = {}
     
@@ -138,15 +138,15 @@ def input_events():
         # Compute the average z-score for the given list of dates using db.get_zscore
         score = db.get_zscore(date_list)
         
-        # Determine the volatility collar using the computed score.
-        collar = get_volatility_color(score)
+        # Determine the volatility color using the computed score.
+        color = get_volatility_color(score)
         
         # Use the calendar day as key (ensuring it matches the calendar printed later)
         if calendar_day not in events:
             events[calendar_day] = []
-        events[calendar_day].append((description, collar, score))
+        events[calendar_day].append((description, color, score))
         
-        print(f"Added event for day {calendar_day}: {description} with score of {score} and collar {collar}\n")
+        print(f"Added event for day {calendar_day}: {description} with score of {score} and color {color}\n")
     
     return events
 

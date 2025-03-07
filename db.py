@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import requests
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 
 CACHE_FILE = "volatility_cache.pkl"
 
@@ -22,11 +22,13 @@ def fetch_and_cache_volatility():
     
     # Loop for several days (e.g., last 179 days)
     for i in range(1, 180):
-        print(f"Fetching data for {i} days ago...")
         time.sleep(2)
         
         # Calculate the start timestamp for i days ago
-        start_timestamp = int(time.time() - (i * 24 * 60 * 60))
+        date = datetime.now().date() - timedelta(days=i)
+        start_timestamp = int(datetime.combine(date, datetime.min.time()).timestamp())
+
+        print(f"Fetching data for {i} days ago ({datetime.fromtimestamp(start_timestamp)})...")
         
         # Construct URL (make sure the startTime parameter is set correctly)
         url = (f'https://open-api-v3.coinglass.com/api/price/ohlc-history'

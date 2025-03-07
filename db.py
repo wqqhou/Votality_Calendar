@@ -14,13 +14,15 @@ def fetch_and_cache_volatility():
     Fetch market price data and compute volatility forecasts using a GARCH(1,1) model
     for several days, store in a dictionary, and cache it to a file.
     Returns the dictionary.
+    Additionally, we store the first closing price for each day.
     """
     result = {
         'Date': [],
-        'Volatility': []  # This will store the forecasted volatility from the GARCH model
+        'Volatility': [],  # Forecasted volatility from the GARCH model
+        'Price': []        # Store the first price from each day's data
     }
     
-    # Loop for several days (for example, last 9 days)
+    # Loop for several days (for example, last 179 days)
     for i in range(1, 180):
         print(f"Fetching data for {i} days ago...")
         time.sleep(2)
@@ -35,7 +37,7 @@ def fetch_and_cache_volatility():
         response = requests.get(url, headers=headers)
         price_history = response.json()
         
-        # Initialize lists to store timestamps and closing prices
+        # Initialize lists to store timestamps and closing prices for this day
         dates = []
         prices = []
         
@@ -56,32 +58,25 @@ def fetch_and_cache_volatility():
         
         # Calculate arithmetic returns (percentage change)
         df['Returns'] = df['Price'].pct_change()
+        returns = df['Returns'].dropna() * 100  # Rescale returns
         
-        # Fit a GARCH(1,1) model on the returns (drop NaN)
-
-        # After calculating returns:
-        returns = df['Returns'].dropna()
-
-# Manually rescale the returns:
-        returns_scaled = returns * 100
-
-# Fit a GARCH(1,1) model using the rescaled returns, disabling automatic rescaling:
-        model = arch_model(returns_scaled, vol='Garch', p=1, q=1, dist='normal', rescale=False)
+        # Fit a GARCH(1,1) model using the rescaled returns, disabling automatic rescaling
+        model = arch_model(returns, vol='Garch', p=1, q=1, dist='normal', rescale=False)
         try:
-         res = model.fit(disp='off')
-    # Forecast volatility one step ahead (variance forecast is on the scaled data)
-         forecast = res.forecast(horizon=1)
-    # Get the forecasted volatility (standard deviation) on the scaled data:
-         garch_volatility_scaled = np.sqrt(forecast.variance.iloc[-1, 0])
-    # Convert volatility back to original scale:
-         garch_volatility = garch_volatility_scaled / 100
+            res_model = model.fit(disp='off')
+            # Forecast volatility one step ahead (variance forecast is on the scaled data)
+            forecast = res_model.forecast(horizon=1)
+            garch_volatility_scaled = np.sqrt(forecast.variance.iloc[-1, 0])
+            # Convert volatility back to original scale
+            garch_volatility = garch_volatility_scaled / 100
         except Exception as e:
-         print("GARCH model failed to converge:", e)
-         garch_volatility = np.nan
+            print("GARCH model failed to converge:", e)
+            garch_volatility = np.nan
         
-        # Save the first date from the API result and the computed GARCH volatility for that day
+        # Save the first date and price from this day's data and the computed volatility
         result['Date'].append(dates[0])
         result['Volatility'].append(garch_volatility)
+        result['Price'].append(prices[0])
     
     # Cache the result dictionary to a file for future use
     with open(CACHE_FILE, "wb") as f:
@@ -93,7 +88,7 @@ def get_cached_volatility():
     """
     Check if the cache file exists.
     If yes, load and return the cached result.
-    Otherwise, fetch the API and cache the result.
+    Otherwise, fetch the API data and cache the result.
     """
     if os.path.exists(CACHE_FILE):
         with open(CACHE_FILE, "rb") as f:
@@ -113,25 +108,22 @@ def get_volatility(date, result):
             return vol
     return None  # or raise an exception if the date is not found
 
-
 def compute_baseline_volatility(result):
     """
-    Compute the baseline volatility using all available 180 days of data.
+    Compute the baseline volatility using the full 180-day period.
     
     Parameters:
         result (dict): The dictionary containing 'Date' and 'Volatility'.
     
     Returns:
-        dict: Contains baseline mean, std dev, and all daily comparisons.
+        List of dictionaries with daily comparisons.
     """
-    if len(result['Volatility']) < 170:
+    if len(result['Volatility']) < 180:
         return {"Error": "Insufficient data. Need 180 days of volatility."}
     
-    # Compute baseline statistics over the full 180-day period
     baseline_mean = np.mean(result['Volatility'])
     baseline_std = np.std(result['Volatility'])
     
-    # Compute comparison metrics for each day
     comparisons = []
     for date, vol in zip(result['Date'], result['Volatility']):
         percentage_deviation = ((vol - baseline_mean) / baseline_mean) * 100 if baseline_mean != 0 else None
@@ -154,9 +146,15 @@ def build_comparison_index(baseline_comparisons):
     """
     return {comp["Date"]: comp for comp in baseline_comparisons}
 
-def get_zscore(target_date):
+def get_zscore(target_dates):
     """
-    Retrieve the Z-score for a given date from the comparison index.
+    Retrieve the average Z-score for a list of dates from the baseline comparisons.
+    
+    Parameters:
+        target_dates (list): List of dates (in DDMMYY format) for which to compute the average Z-score.
+    
+    Returns:
+        float: The average Z-score, rounded to one decimal place.
     """
     if not os.path.exists(CACHE_FILE):
         fetch_and_cache_volatility()
@@ -164,9 +162,9 @@ def get_zscore(target_date):
     baseline_comparisons = compute_baseline_volatility(result)
     comparison_index = build_comparison_index(baseline_comparisons)
 
-    comparisons = {date: comparison_index.get(date, None) for date in target_date}
-
-# Extract the z-scores from the comparisons that exist and are not None:
+    # Look up comparisons for each target date
+    comparisons = {date: comparison_index.get(date, None) for date in target_dates}
+    # Extract valid Z-scores
     zscores = [comp["Z-score"] for comp in comparisons.values() if comp is not None and comp["Z-score"] is not None]
 
     if zscores:
@@ -174,10 +172,98 @@ def get_zscore(target_date):
         return round(average_zscore, 1)
     else:
         print("No valid Z-scores found for the selected dates.")
+        return None
 
+def refit_garch_on_cached_data():
+    """
+    Use the cached 180-day data (price data) to re-fit a new GARCH(1,1) model.
+    This function loads the cached data, computes the daily returns from the cached prices,
+    fits a new GARCH(1,1) model, and forecasts the next day's volatility.
+    """
+    if not os.path.exists(CACHE_FILE):
+        print("Cache file not found, fetching data...")
+        result = fetch_and_cache_volatility()
+    else:
+        with open(CACHE_FILE, "rb") as f:
+            result = pickle.load(f)
+    
+    if 'Price' not in result or len(result['Price']) < 2:
+        print("Insufficient price data in cache.")
+        return None
+    
+    # Build a DataFrame from the cached price data and dates.
+    df = pd.DataFrame({
+        'Date': result['Date'],
+        'Price': result['Price']
+    })
+    df.set_index('Date', inplace=True)
+    
+    # Compute daily arithmetic returns and rescale by 100
+    df['Returns'] = df['Price'].pct_change().dropna() * 100
+    returns = df['Returns'].dropna()
+    
+    model = arch_model(returns, vol='Garch', p=1, q=1, dist='normal', rescale=False)
+    try:
+        res_model = model.fit(disp='off')
+        print("New GARCH model fitted on cached 180-day data.")
+        forecast = res_model.forecast(horizon=1)
+        new_volatility_scaled = np.sqrt(forecast.variance.iloc[-1, 0])
+        new_volatility = new_volatility_scaled / 100
+        print("Forecasted volatility from refitted model:", new_volatility)
+        return res_model
+    except Exception as e:
+        print("Error re-fitting GARCH model on cached data:", e)
+        return None
+    
+def update_cache_with_zscores():
+    """
+    Load the cached 180-day volatility data, compute baseline statistics over the period,
+    calculate the z-score for each day's volatility, add these values to the cached data,
+    and overwrite the cache file with the updated data.
+    
+    Returns:
+        result (dict): Updated cache dictionary containing 'Date', 'Volatility', 'Price', and new 'Zscore'.
+    """
+    if not os.path.exists(CACHE_FILE):
+        print("Cache file not found. Please run fetch_and_cache_volatility() first.")
+        return None
+    
+    # Load the cached data
+    with open(CACHE_FILE, "rb") as f:
+        result = pickle.load(f)
+    
+    volatilities = result.get('Volatility', [])
+    if len(volatilities) == 0:
+        print("No volatility data in cache.")
+        return None
+    
+    # Compute baseline statistics over the entire cached period (180 days)
+    baseline_mean = np.mean(volatilities)
+    baseline_std = np.std(volatilities)
+    
+    # Compute z-score for each day's volatility
+    # z = (volatility - baseline_mean) / baseline_std
+    zscores = [(vol - baseline_mean) / baseline_std if baseline_std != 0 else None for vol in volatilities]
+    
+    # Add the computed z-scores to the cache dictionary
+    result['Zscore'] = zscores
+    
+    # Overwrite the original cache file with the updated dictionary
+    with open(CACHE_FILE, "wb") as f:
+        pickle.dump(result, f)
+    
+    print("Cache file updated with z-scores.")
+    return result
 
 if __name__ == "__main__":
-    # Only fetch if running as the main script (so importing in other files doesn't re-fetch)
+    # Ensure cache file exists (this will fetch data if needed)
     if not os.path.exists(CACHE_FILE):
         fetch_and_cache_volatility()
+    
+    # Optionally, re-fit the model on the cached data (if you want to refresh your volatility estimates)
+    refit_garch_on_cached_data()
+    
+    # Now update the cache with z-scores computed from the cached volatility data.
+    updated_result = update_cache_with_zscores()
+
 

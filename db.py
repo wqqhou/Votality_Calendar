@@ -20,10 +20,13 @@ def fetch_and_cache_volatility():
         'Volatility': []  # Historical volatility computed from past data.
     }
     
-    # Loop for several days (e.g., last 179 days)
-    for i in range(1, 180):
-        time.sleep(2)
-        
+    all_data = []   # Store all price data (multiple per day)
+
+    rolling_window = 14
+
+    days_to_fetch = 180
+
+    for i in range(1, days_to_fetch + 1):       
         # Calculate the start timestamp for i days ago
         date = datetime.now().date() - timedelta(days=i)
         start_timestamp = int(datetime.combine(date, datetime.min.time()).timestamp())
@@ -37,38 +40,46 @@ def fetch_and_cache_volatility():
         response = requests.get(url, headers=headers)
         price_history = response.json()
         
-        # Initialize lists to store timestamps and closing prices
-        dates = []
-        prices = []
-        
-        # Parse the API data (assuming timestamps are in seconds)
+        # Parse API data
         for data_point in price_history['data']:
-            # Format the timestamp to DDMMYY (as integer)
-            dt = int(datetime.fromtimestamp(data_point['t']).strftime("%d%m%y"))
-            dates.append(dt)
-            prices.append(float(data_point['c']))
-        
-        # Build a DataFrame from the API data
-        data = {
-            'Date': dates,
-            'Price': prices
-        }
-        df = pd.DataFrame(data)
-        df.set_index('Date', inplace=True)
-        
-        # Calculate arithmetic returns (percentage change)
-        df['Returns'] = df['Price'].pct_change()
-        
-        # Compute historical volatility as the sample standard deviation of returns
-        hist_volatility = df['Returns'].std()
-        
-        # Save the first date from the API result and the computed volatility for that day
-        result['Date'].append(dates[0])
-        result['Volatility'].append(hist_volatility)
+            dt = datetime.fromtimestamp(data_point['t']).strftime("%Y-%m-%d %H:%M")
+            price = float(data_point['c'])  # Use closing price for each interval
+            all_data.append([dt, price])
+
+        time.sleep(2)  # Prevent API rate limits
+
+    # Convert to DataFrame
+    df = pd.DataFrame(all_data, columns=['DateTime', 'Price'])
+    df['DateTime'] = pd.to_datetime(df['DateTime'])
+    df['Date'] = df['DateTime'].dt.date  # Extract only the date
+    df.set_index('DateTime', inplace=True)
+
+    print(f"\nTotal price points fetched: {df.shape[0]}")
+
+    # Calculate intraday log returns
+    df['Log Returns'] = np.log(df['Price'] / df['Price'].shift(1))
+
+    df.dropna(inplace=True)
+
+    # Compute daily intraday volatility (standard deviation of intraday returns per day)
+    daily_volatility = df.groupby('Date')['Log Returns'].std()
+
+    # Compute 14-day rolling volatility on daily intraday volatilities
+    rolling_volatility = daily_volatility.rolling(window=rolling_window).mean()
+
+    rolling_volatility.dropna(inplace=True)
+
+    # Store results in the dictionary
+    result['Date'] = rolling_volatility.index.astype(str).tolist()
+    result['Volatility'] = rolling_volatility.tolist()
+
+    print(f"Computed volatility for {len(result['Date'])} days.")
     
     # Cache the result dictionary to a file for future use
     with open(CACHE_FILE, "wb") as f:
         pickle.dump(result, f)
+
+    print(f"Results stored to cache file: {CACHE_FILE}")
     
     return result
 

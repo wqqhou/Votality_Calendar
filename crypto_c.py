@@ -1,9 +1,9 @@
 import tkinter as tk
+from tkinter import ttk
 import calendar
 from datetime import datetime
 import db  # your module with get_zscore and any other functions
-
-
+from statistics import mean
 
 # For tkinter we use standard color names.
 color_map = {
@@ -24,7 +24,7 @@ class VolatilityCalendarApp(tk.Tk):
         self.geometry("900x700")
         
         # Store events as a list of dictionaries.
-        # Each event dictionary contains: date (datetime object), description, score, collar.
+        # Each event dictionary contains: date (datetime object), description, score, color.
         self.events = []
         
         self.year = 2025
@@ -83,11 +83,11 @@ class VolatilityCalendarApp(tk.Tk):
             tk.Label(event_details_frame, text="Events for " + calendar.month_name[self.current_month], 
                      font=("Helvetica", 10, "bold"), bg="black", fg="white").pack(anchor="w")
             for ev in events_in_month:
-                # Display event date, description, score and use its collar color.
+                # Display event date, description, score and use its color color.
                 ev_date_str = ev["date"].strftime("%d/%m/%Y")
                 event_text = f"{ev_date_str}: {ev['description']} (Score: {ev['score']})"
-                # Use the event's collar for the event text.
-                tk.Label(event_details_frame, text=event_text, fg=ev["collar"], bg="black").pack(anchor="w")
+                # Use the event's color for the event text.
+                tk.Label(event_details_frame, text=event_text, fg=ev["color"], bg="black").pack(anchor="w")
         else:
             tk.Label(event_details_frame, text="No events for " + calendar.month_name[self.current_month],
                      bg="black", fg="white").pack(anchor="w")
@@ -139,7 +139,7 @@ class VolatilityCalendarApp(tk.Tk):
         if total_volatility < 0:
             return color_map["blue"]
         elif total_volatility < 0.5:
-            return color_map["black"]
+            return color_map["white"]
         elif total_volatility < 1:
             return color_map["green"]
         elif total_volatility < 1.5:
@@ -171,9 +171,9 @@ class VolatilityCalendarApp(tk.Tk):
             print("Error parsing event date:", e)
             return
         
-        # Parse the comma-separated zscore dates into integers.
+        # Parse the comma-separated zscore dates into strings.
         try:
-            zscore_dates = [int(d.strip()) for d in zscore_dates_str.split(",") if d.strip()]
+            zscore_dates = [str(d.strip()) for d in zscore_dates_str.split(",") if d.strip()]
         except Exception as e:
             print("Error parsing z-score dates:", e)
             return
@@ -181,19 +181,19 @@ class VolatilityCalendarApp(tk.Tk):
         # Compute the average z-score using db.get_zscore (assumed to be implemented).
         score = db.get_zscore(zscore_dates)
         
-        # Determine the event collar (color) using your volatility scoring logic.
-        collar = self.get_volatility_color(score)
+        # Determine the event color (color) using your volatility scoring logic.
+        color = self.get_volatility_color(score)
         
         # Store the event with full date information.
         event = {
             "date": event_dt,
             "description": desc,
             "score": score,
-            "collar": collar
+            "color": color
         }
         self.events.append(event)
         
-        print(f"Added event for {event_dt.strftime('%d/%m/%Y')}: {desc} with score {score} and collar {collar}")
+        print(f"Added event for {event_dt.strftime('%d/%m/%Y')}: {desc} with score {score} and color {color}")
         
         # Clear input fields.
         self.event_date_entry.delete(0, tk.END)

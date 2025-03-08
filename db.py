@@ -106,14 +106,23 @@ def get_cached_volatility():
         print("Fetched volatility data from API and cached it.")
     return result
 
-def get_volatility(date, result):
+def get_volatility(date_str, result):
     """
     Retrieve the historical volatility for a given date (in DDMMYY format) from the result dictionary.
     """
+    try:
+        # Convert input from DDMMYY to ISO format (YYYY-MM-DD)
+        dt = datetime.strptime(date_str, "%d%m%y")
+        iso_date = dt.strftime("%Y-%m-%d")
+    except Exception as e:
+        print("Error parsing date:", e)
+        return None
+
+    # Find the matching volatility by comparing ISO date strings.
     for d, vol in zip(result['Date'], result['Volatility']):
-        if d == date:
+        if d == iso_date:
             return vol
-    return None  # or raise an exception if the date is not found
+    return None  # or raise an exception if not found
 
 def compute_baseline_volatility(result):
     """
@@ -156,10 +165,8 @@ def build_comparison_index(baseline_comparisons):
 def get_zscore(target_dates):
     """
     Retrieve the average Z-score for a list of target dates from the comparison index.
-    
     Parameters:
         target_dates (list): List of dates in DDMMYY format.
-    
     Returns:
         float: The average Z-score (rounded to one decimal) or None if no valid Z-scores found.
     """
@@ -169,18 +176,26 @@ def get_zscore(target_dates):
     baseline_comparisons = compute_baseline_volatility(result)
     comparison_index = build_comparison_index(baseline_comparisons)
 
-    # Gather comparisons for the target dates
-    comparisons = {date: comparison_index.get(date, None) for date in target_dates}
-    
-    # Extract the z-scores from the comparisons that exist and are not None
-    zscores = [comp["Z-score"] for comp in comparisons.values() if comp is not None and comp["Z-score"] is not None]
-    
+    zscores = []
+    for date_str in target_dates:
+        try:
+            dt = datetime.strptime(date_str, "%d%m%y")
+            iso_date = dt.strftime("%Y-%m-%d")
+        except Exception as e:
+            print(f"Error parsing date {date_str}: {e}")
+            continue
+
+        comp = comparison_index.get(iso_date)
+        if comp and comp["Z-score"] is not None:
+            zscores.append(comp["Z-score"])
+
     if zscores:
         average_zscore = sum(zscores) / len(zscores)
         return round(average_zscore, 1)
     else:
         print("No valid Z-scores found for the selected dates.")
         return None
+
 
 if __name__ == "__main__":
     # Only fetch if running as the main script

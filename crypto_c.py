@@ -1,12 +1,6 @@
 import tkinter as tk
-from tkinter import ttk
 import calendar
 from datetime import datetime
-from statistics import mean
-import re
-
-# Initialize colorama so that ANSI colors work on all platforms.
-init(autoreset=True)
 import db  # your module with get_zscore and any other functions
 
 

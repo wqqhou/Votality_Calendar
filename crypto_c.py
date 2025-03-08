@@ -2,7 +2,8 @@ import calendar
 from colorama import Fore, Style, init
 import db
 from datetime import datetime
-from statistics import mean 
+from statistics import mean
+import re
 # Initialize colorama so that ANSI colors work on all platforms.
 init(autoreset=True)
 
@@ -127,17 +128,17 @@ def input_events():
             continue
         
         description = input("Enter event description: ").strip()
-        
-        dates_str = input("Enter a list of dates for z-score calculation, separated by commas (e.g., 180924,71124,181224,10225): ").strip()
+        dates_str = input("Enter a list of dates (in DDMMYY format) for z-score calculation, separated by commas (e.g., 050225, 060225): ").strip()
+
         try:
-            date_list = [int(d.strip()) for d in dates_str.split(',') if d.strip()]
+            date_list = re.findall(r"\d{6}", dates_str)
+            date_list = [datetime.strptime(date, "%d%m%y").strftime("%Y-%m-%d") for date in date_list]
         except ValueError:
             print("Error in parsing the list of dates. Please try again.")
             continue
         
         # Compute the average z-score for the given list of dates using db.get_zscore
         score = db.get_zscore(date_list)
-        
         # Determine the volatility color using the computed score.
         color = get_volatility_color(score)
         

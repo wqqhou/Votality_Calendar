@@ -50,7 +50,7 @@ def fetch_and_cache_volatility():
 
     # Convert to DataFrame
     df = pd.DataFrame(all_data, columns=['DateTime', 'Price'])
-    df['DateTime'] = pd.to_datetime(df['DateTime'])
+    df['DateTime'] = pd.to_datetime(df['DateTime'], format="%Y-%m-%d %H:%M")
     df['Date'] = df['DateTime'].dt.date  # Extract only the date
     df.set_index('DateTime', inplace=True)
 
@@ -117,9 +117,7 @@ def compute_baseline_volatility(result):
     Returns:
         list: A list of dictionaries with comparison metrics for each day.
     """
-    if len(result['Volatility']) < 179:
-        return {"Error": "Insufficient data. Need 179 days of volatility."}
-    
+
     # Compute baseline statistics over the full period
     baseline_mean = np.mean(result['Volatility'])
     baseline_std = np.std(result['Volatility'])
@@ -162,7 +160,7 @@ def get_zscore(target_dates):
     result = get_cached_volatility()
     baseline_comparisons = compute_baseline_volatility(result)
     comparison_index = build_comparison_index(baseline_comparisons)
-    
+
     # Gather comparisons for the target dates
     comparisons = {date: comparison_index.get(date, None) for date in target_dates}
     

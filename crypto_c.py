@@ -81,7 +81,7 @@ class VolatilityCalendarApp(tk.Tk):
 
         # Input Fields
         tk.Label(self.input_frame, text="Event Date (DDMMYY):", bg=BORDER_COLOR, fg=LIGHT_TEXT, font=FONT_BOLD).grid(row=0, column=0, padx=5, pady=5, sticky="e")
-        self.event_date_entry = tk.Entry(self.input_frame, bg=DARK_BG, fg=LIGHT_TEXT, insertbackground=LIGHT_TEXT)
+        self.event_date_entry = tk.Entry(self.input_frame, width=40, bg=DARK_BG, fg=LIGHT_TEXT, insertbackground=LIGHT_TEXT)
         self.event_date_entry.grid(row=0, column=1, padx=5, pady=5)
 
         tk.Label(self.input_frame, text="Event Description:", bg=BORDER_COLOR, fg=LIGHT_TEXT, font=FONT_BOLD).grid(row=1, column=0, padx=5, pady=5, sticky="e")

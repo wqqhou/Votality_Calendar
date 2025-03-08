@@ -9,7 +9,7 @@ import db  # your module with get_zscore and any other functions
 
 # For tkinter we use standard color names.
 color_map = {
-    "red": "red", 、ｓ
+    "red": "red",
     "green": "green",
     "blue": "blue",
     "yellow": "yellow",

@@ -40,7 +40,7 @@ class VolatilityCalendarApp(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("2025 Volatility Calendar")
-        self.geometry("1000x750")
+        self.geometry("750x500")
         self.configure(bg=DARK_BG)
 
         # Store events as a list of dictionaries

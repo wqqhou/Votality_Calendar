@@ -63,6 +63,10 @@ class VolatilityCalendarApp(tk.Tk):
         self.add_event_button = tk.Button(self.input_frame, text="Add Event", command=self.add_event)
         self.add_event_button.grid(row=3, column=1, padx=5, pady=5, sticky="e")
         
+        # Error box to show any errors in red.
+        self.error_label = tk.Label(self.input_frame, text="", bg="lightblue", fg="red")
+        self.error_label.grid(row=4, column=0, columnspan=2, padx=5, pady=5)
+        
         self.update_calendar(self.current_month)
     
     def update_calendar(self, month):
@@ -83,10 +87,9 @@ class VolatilityCalendarApp(tk.Tk):
             tk.Label(event_details_frame, text="Events for " + calendar.month_name[self.current_month], 
                      font=("Helvetica", 10, "bold"), bg="black", fg="white").pack(anchor="w")
             for ev in events_in_month:
-                # Display event date, description, score and use its color color.
+                # Display event date, description, score and use its color.
                 ev_date_str = ev["date"].strftime("%d/%m/%Y")
                 event_text = f"{ev_date_str}: {ev['description']} (Score: {ev['score']})"
-                # Use the event's color for the event text.
                 tk.Label(event_details_frame, text=event_text, fg=ev["color"], bg="black").pack(anchor="w")
         else:
             tk.Label(event_details_frame, text="No events for " + calendar.month_name[self.current_month],
@@ -121,7 +124,6 @@ class VolatilityCalendarApp(tk.Tk):
                     lbl.grid(row=row_index, column=col, padx=1, pady=1)
                 else:
                     if day in events_by_day:
-                        # Sum the volatility scores for that day.
                         total_score = sum(ev["score"] for ev in events_by_day[day])
                         day_color = self.get_volatility_color(total_score)
                     else:
@@ -144,44 +146,46 @@ class VolatilityCalendarApp(tk.Tk):
             return color_map["green"]
         elif total_volatility < 1.5:
             return color_map["yellow"]
-        elif total_volatility >= 1.5:
+        else:
             return color_map["red"]
     
     def add_event(self):
+        # Clear any previous error message.
+        self.error_label.config(text="")
+        
         # Get input values.
         date_str = self.event_date_entry.get().strip()
         desc = self.event_desc_entry.get().strip()
         zscore_dates_str = self.zscore_dates_entry.get().strip()
         
+        # Check if all fields are filled.
         if not date_str or not desc or not zscore_dates_str:
-            print("Please fill in all fields.")
+            self.error_label.config(text="Please fill in all fields.")
             return
         
-        # Parse the event date using datetime.strptime.
-        # Support 5-digit (e.g., "30325" meaning 3 March 2025) and 6-digit formats.
+        # Parse the event date.
         try:
             if len(date_str) == 5:
-                # For a 5-digit input, pad the day with a leading zero.
                 event_dt = datetime.strptime("0" + date_str, "%d%m%y")
             elif len(date_str) == 6:
                 event_dt = datetime.strptime(date_str, "%d%m%y")
             else:
                 raise ValueError("Date must be 5 or 6 digits in DDMMYY format.")
         except Exception as e:
-            print("Error parsing event date:", e)
+            self.error_label.config(text=f"Error parsing event date: {e}")
             return
         
-        # Parse the comma-separated zscore dates into strings.
+        # Parse the comma-separated zscore dates.
         try:
             zscore_dates = [str(d.strip()) for d in zscore_dates_str.split(",") if d.strip()]
         except Exception as e:
-            print("Error parsing z-score dates:", e)
+            self.error_label.config(text=f"Error parsing z-score dates: {e}")
             return
         
-        # Compute the average z-score using db.get_zscore (assumed to be implemented).
+        # Compute the average z-score using db.get_zscore (assumed implemented).
         score = db.get_zscore(zscore_dates)
         
-        # Determine the event color (color) using your volatility scoring logic.
+        # Determine the event color using your volatility scoring logic.
         color = self.get_volatility_color(score)
         
         # Store the event with full date information.
@@ -199,6 +203,9 @@ class VolatilityCalendarApp(tk.Tk):
         self.event_date_entry.delete(0, tk.END)
         self.event_desc_entry.delete(0, tk.END)
         self.zscore_dates_entry.delete(0, tk.END)
+        
+        # Clear any error message.
+        self.error_label.config(text="")
         
         # Refresh the calendar display.
         self.update_calendar(self.current_month)

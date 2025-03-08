@@ -146,7 +146,7 @@ class VolatilityCalendarApp(tk.Tk):
             return color_map["green"]
         elif total_volatility < 1.5:
             return color_map["yellow"]
-        else:
+        elif total_volatility >= 1.5:
             return color_map["red"]
     
     def add_event(self):

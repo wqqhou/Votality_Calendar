@@ -22,11 +22,9 @@ def fetch_and_cache_volatility():
     
     all_data = []   # Store all price data (multiple per day)
 
-    rolling_window = 14
-
     days_to_fetch = 180
 
-    for i in range(1, days_to_fetch + 1):       
+    for i in range(1, days_to_fetch):       
         # Calculate the start timestamp for i days ago
         date = datetime.now().date() - timedelta(days=i)
         start_timestamp = int(datetime.combine(date, datetime.min.time()).timestamp())
@@ -57,30 +55,40 @@ def fetch_and_cache_volatility():
     print(f"\nTotal price points fetched: {df.shape[0]}")
 
     # Calculate intraday log returns
-    df['Log Returns'] = np.log(df['Price'] / df['Price'].shift(1))
+    df['Log_Returns'] = np.log(df['Price'] / df['Price'].shift(1))
 
     df.dropna(inplace=True)
 
     # Compute daily intraday volatility (standard deviation of intraday returns per day)
-    daily_volatility = df.groupby('Date')['Log Returns'].std()
+    daily_volatility = df.groupby('Date')['Log_Returns'].std()
 
-    # Compute 14-day rolling volatility on daily intraday volatilities
-    rolling_volatility = daily_volatility.rolling(window=rolling_window).mean()
+    # Merge log returns and volatility to ensure alignment
+    df_log_returns = df.groupby('Date')['Log_Returns'].mean().reset_index()
+    df_volatility = daily_volatility.reset_index()
 
-    rolling_volatility.dropna(inplace=True)
+    # Merge to align dates
+    df_combined = pd.merge(df_log_returns, df_volatility, on="Date", how="left")
 
-    # Store results in the dictionary
-    result['Date'] = rolling_volatility.index.astype(str).tolist()
-    result['Volatility'] = rolling_volatility.tolist()
+    # Rename columns for clarity
+    df_combined.columns = ['Date', 'Log_Returns', 'Volatility']
 
-    print(f"Computed volatility for {len(result['Date'])} days.")
+    df_combined.dropna(inplace=True)
+
+    # 🔹 Store result in dictionary
+    result = {
+        'Date': df_combined['Date'].astype(str).tolist(),
+        'Log_Returns': df_combined['Log_Returns'].tolist(),
+        'Volatility': df_combined['Volatility'].tolist()
+    }
     
+    print(f"Computed volatility for {len(result['Date'])} days.")
+
     # Cache the result dictionary to a file for future use
     with open(CACHE_FILE, "wb") as f:
         pickle.dump(result, f)
 
     print(f"Results stored to cache file: {CACHE_FILE}")
-    
+
     return result
 
 def get_cached_volatility():

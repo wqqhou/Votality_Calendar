@@ -1,164 +1,214 @@
+import tkinter as tk
+from tkinter import ttk
 import calendar
-from colorama import Fore, Style, init
-import db
 from datetime import datetime
 from statistics import mean
 import re
+
 # Initialize colorama so that ANSI colors work on all platforms.
 init(autoreset=True)
+import db  # your module with get_zscore and any other functions
 
-# Define a mapping for some colors.
+
+
+# For tkinter we use standard color names.
 color_map = {
-    "red": Fore.RED,
-    "green": Fore.GREEN,
-    "blue": Fore.BLUE,
-    "yellow": Fore.YELLOW,
-    "magenta": Fore.MAGENTA,
-    "cyan": Fore.CYAN,
-    "white": Fore.WHITE
+    "red": "red",
+    "green": "green",
+    "blue": "blue",
+    "yellow": "yellow",
+    "magenta": "magenta",
+    "cyan": "cyan",
+    "white": "white",
+    "black": "black"  # default
 }
 
-def get_volatility_color(total_volatility):
-    """
-    Determine the color for the date based on the aggregated volatility score.
+class VolatilityCalendarApp(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("2025 Volatility Calendar")
+        self.geometry("900x700")
+        
+        # Store events as a list of dictionaries.
+        # Each event dictionary contains: date (datetime object), description, score, collar.
+        self.events = []
+        
+        self.year = 2025
+        self.current_month = 1  # default to January
+        
+        # Create three frames: sidebar, main area, and bottom input area.
+        self.sidebar_frame = tk.Frame(self, width=150, bg="lightgray")
+        self.sidebar_frame.pack(side="left", fill="y")
+        
+        # Set main frame with a black background.
+        self.main_frame = tk.Frame(self, bg="black")
+        self.main_frame.pack(side="top", fill="both", expand=True)
+        
+        self.input_frame = tk.Frame(self, height=100, bg="lightblue")
+        self.input_frame.pack(side="bottom", fill="x")
+        
+        # Sidebar: title and month buttons.
+        tk.Label(self.sidebar_frame, text="2025 Volatility Calendar", bg="lightgray", font=("Helvetica", 12, "bold")).pack(pady=10)
+        for m in range(1, 13):
+            btn = tk.Button(self.sidebar_frame, text=calendar.month_name[m], command=lambda m=m: self.update_calendar(m))
+            btn.pack(fill="x", pady=2, padx=5)
+        
+        # Input area: fields for event input.
+        tk.Label(self.input_frame, text="Event Date (DDMMYY):", bg="lightblue").grid(row=0, column=0, padx=5, pady=5, sticky="e")
+        self.event_date_entry = tk.Entry(self.input_frame)
+        self.event_date_entry.grid(row=0, column=1, padx=5, pady=5)
+        
+        tk.Label(self.input_frame, text="Event Description:", bg="lightblue").grid(row=1, column=0, padx=5, pady=5, sticky="e")
+        self.event_desc_entry = tk.Entry(self.input_frame, width=40)
+        self.event_desc_entry.grid(row=1, column=1, padx=5, pady=5)
+        
+        tk.Label(self.input_frame, text="Z-Score Dates (comma separated):", bg="lightblue").grid(row=2, column=0, padx=5, pady=5, sticky="e")
+        self.zscore_dates_entry = tk.Entry(self.input_frame, width=40)
+        self.zscore_dates_entry.grid(row=2, column=1, padx=5, pady=5)
+        
+        self.add_event_button = tk.Button(self.input_frame, text="Add Event", command=self.add_event)
+        self.add_event_button.grid(row=3, column=1, padx=5, pady=5, sticky="e")
+        
+        self.update_calendar(self.current_month)
     
-    For example:
-      - Negative total score (events predict lower-than-baseline volatility): blue
-      - Zero: white (neutral)
-      - Low positive total score: green (mild volatility)
-      - Moderate positive total score: yellow (increased volatility)
-      - High positive total score: red (high volatility)
-      
-    Adjust thresholds as needed.
-    """
-    if total_volatility < 0:
-        return color_map["blue"]
-    elif total_volatility == 0:
-        return color_map["white"]
-    elif total_volatility < 1:
-        return color_map["green"]
-    elif total_volatility < 2:
-        return color_map["yellow"]
-    elif total_volatility >= 2:
-        return color_map["red"]
-
-def parse_event_date(date_input):
-    """
-    Parse a date string that is either 5 or 6 digits long.
-    - 5 digits: day is 1 digit, month is next two digits, year is last two digits.
-      Example: "30325" -> "030325" meaning 03/03/25 (March 3, 2025)
-    - 6 digits: assumed to be in DDMMYY format.
-    Returns a datetime object.
-    """
-    date_input = date_input.strip()
-    if len(date_input) == 5:
-        # Extract parts assuming day is one digit, then month (2 digits), year (2 digits)
-        day = date_input[0]      # e.g. "3"
-        month = date_input[1:3]  # e.g. "03"
-        year = date_input[3:]    # e.g. "25"
-        formatted_date = f"0{day}{month}{year}"  # becomes "030325"
-        return datetime.strptime(formatted_date, "%d%m%y")
-    elif len(date_input) == 6:
-        return datetime.strptime(date_input, "%d%m%y")
-    else:
-        raise ValueError("Date input must be either 5 or 6 digits in DDMMYY format.")
-
-
-def print_crypto_volatility_calendar(year, month, events):
-    """
-    Print a calendar for the specified year and month where each day is colored based on the
-    aggregated volatility score from events. The events dictionary keys are day numbers.
-    Each value is a list of event tuples of the form:
-         (event_description, event_comment_color, volatility_score)
-    """
-    # Generate the calendar matrix: each week is a list of day numbers (0 for days not in the month)
-    month_matrix = calendar.monthcalendar(year, month)
-    
-    # Print header
-    print("Mo  Tu  We  Th  Fr  Sa  Su")
-    
-    # Print each week of the calendar
-    for week in month_matrix:
-        week_str = ""
-        for day in week:
-            if day == 0:
-                week_str += "    "  # Blank space for days outside the month.
-            else:
-                if day in events:
-                    total_volatility = mean(score for _, _, score in events[day])
-                    day_color = get_volatility_color(total_volatility)
-                    day_str = f"{day_color}{day:2d}{Style.RESET_ALL}"
+    def update_calendar(self, month):
+        self.current_month = month
+        
+        # Clear the main frame entirely.
+        for widget in self.main_frame.winfo_children():
+            widget.destroy()
+        
+        # Create an event details frame at the top of main_frame with black background.
+        event_details_frame = tk.Frame(self.main_frame, bg="black")
+        event_details_frame.pack(fill="x", padx=10, pady=10)
+        
+        # Filter events for the selected month and year.
+        events_in_month = [e for e in self.events if e["date"].month == self.current_month and e["date"].year == self.year]
+        
+        if events_in_month:
+            tk.Label(event_details_frame, text="Events for " + calendar.month_name[self.current_month], 
+                     font=("Helvetica", 10, "bold"), bg="black", fg="white").pack(anchor="w")
+            for ev in events_in_month:
+                # Display event date, description, score and use its collar color.
+                ev_date_str = ev["date"].strftime("%d/%m/%Y")
+                event_text = f"{ev_date_str}: {ev['description']} (Score: {ev['score']})"
+                # Use the event's collar for the event text.
+                tk.Label(event_details_frame, text=event_text, fg=ev["collar"], bg="black").pack(anchor="w")
+        else:
+            tk.Label(event_details_frame, text="No events for " + calendar.month_name[self.current_month],
+                     bg="black", fg="white").pack(anchor="w")
+        
+        # Create a calendar frame below the event details, with black background.
+        calendar_frame = tk.Frame(self.main_frame, bg="black")
+        calendar_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        
+        # Create header row (day names).
+        header = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"]
+        for col, day in enumerate(header):
+            lbl = tk.Label(calendar_frame, text=day, font=("Helvetica", 10, "bold"), borderwidth=1, relief="solid", width=4,
+                           bg="black", fg="white")
+            lbl.grid(row=0, column=col, padx=1, pady=1)
+        
+        # Build an index for events keyed by day in this month.
+        events_by_day = {}
+        for ev in events_in_month:
+            day = ev["date"].day
+            if day not in events_by_day:
+                events_by_day[day] = []
+            events_by_day[day].append(ev)
+        
+        # Populate the calendar grid.
+        cal = calendar.monthcalendar(self.year, month)
+        for row_index, week in enumerate(cal, start=1):
+            for col, day in enumerate(week):
+                if day == 0:
+                    lbl = tk.Label(calendar_frame, text="", borderwidth=1, relief="solid", width=4,
+                                   bg="black", fg="white")
+                    lbl.grid(row=row_index, column=col, padx=1, pady=1)
                 else:
-                    day_str = f"{day:2d}"
-                week_str += day_str + "  "
-        print(week_str)
+                    if day in events_by_day:
+                        # Sum the volatility scores for that day.
+                        total_score = sum(ev["score"] for ev in events_by_day[day])
+                        day_color = self.get_volatility_color(total_score)
+                    else:
+                        day_color = "white"
+                    
+                    lbl = tk.Label(calendar_frame, text=str(day), borderwidth=1, relief="solid", width=4,
+                                   bg="black", fg=day_color)
+                    lbl.grid(row=row_index, column=col, padx=1, pady=1)
     
-    # List out event details for each day
-    print("\nEvent Details:")
-    for day in sorted(events.keys()):
-        print(f"Day {day:2d}:")
-        for event in events[day]: 
-            event_desc, event_color, volatility_score = event
-            print(f"  {event_color}{event_desc} (Volatility Score: {volatility_score}){Style.RESET_ALL}")
-
-def input_events():
-    """
-    Prompt the user to input event details.
-    Each event is defined by:
-      - A date (in DDMMYY format) on which the event occurs.
-      - An event description.
-      - A list of dates (as integers) that will be used to compute the average z-score.
-      - The volatility color is determined automatically by get_volatility_color.
+    def get_volatility_color(self, total_volatility):
+        """
+        Returns a color (as a string) based on the aggregated volatility score.
+        Adjust thresholds as needed.
+        """
+        if total_volatility < 0:
+            return color_map["blue"]
+        elif total_volatility < 0.5:
+            return color_map["black"]
+        elif total_volatility < 1:
+            return color_map["green"]
+        elif total_volatility < 1.5:
+            return color_map["yellow"]
+        elif total_volatility >= 1.5:
+            return color_map["red"]
     
-    Returns:
-        events (dict): Dictionary mapping event days (as integers) to a list of event tuples.
-                        Each tuple is (description, color, score).
-    """
-    events = {}
-    
-    while True:
-        date_input = input("Enter event date (in DDMMYY format) or type 'done' to finish: ").strip()
-        if date_input.lower() == 'done':
-            break
+    def add_event(self):
+        # Get input values.
+        date_str = self.event_date_entry.get().strip()
+        desc = self.event_desc_entry.get().strip()
+        zscore_dates_str = self.zscore_dates_entry.get().strip()
+        
+        if not date_str or not desc or not zscore_dates_str:
+            print("Please fill in all fields.")
+            return
+        
+        # Parse the event date using datetime.strptime.
+        # Support 5-digit (e.g., "30325" meaning 3 March 2025) and 6-digit formats.
         try:
-            event_dt = parse_event_date(date_input)
-            calendar_day = event_dt.day  # This is now correctly parsed
+            if len(date_str) == 5:
+                # For a 5-digit input, pad the day with a leading zero.
+                event_dt = datetime.strptime("0" + date_str, "%d%m%y")
+            elif len(date_str) == 6:
+                event_dt = datetime.strptime(date_str, "%d%m%y")
+            else:
+                raise ValueError("Date must be 5 or 6 digits in DDMMYY format.")
         except Exception as e:
-            print("Error parsing date:", e)
-            continue
+            print("Error parsing event date:", e)
+            return
         
-        description = input("Enter event description: ").strip()
-        dates_str = input("Enter a list of dates (in DDMMYY format) for z-score calculation, separated by commas (e.g., 050225, 060225): ").strip()
-
+        # Parse the comma-separated zscore dates into integers.
         try:
-            date_list = re.findall(r"\d{6}", dates_str)
-            date_list = [datetime.strptime(date, "%d%m%y").strftime("%Y-%m-%d") for date in date_list]
-        except ValueError:
-            print("Error in parsing the list of dates. Please try again.")
-            continue
+            zscore_dates = [int(d.strip()) for d in zscore_dates_str.split(",") if d.strip()]
+        except Exception as e:
+            print("Error parsing z-score dates:", e)
+            return
         
-        # Compute the average z-score for the given list of dates using db.get_zscore
-        score = db.get_zscore(date_list)
-        # Determine the volatility color using the computed score.
-        color = get_volatility_color(score)
+        # Compute the average z-score using db.get_zscore (assumed to be implemented).
+        score = db.get_zscore(zscore_dates)
         
-        # Use the calendar day as key (ensuring it matches the calendar printed later)
-        if calendar_day not in events:
-            events[calendar_day] = []
-        events[calendar_day].append((description, color, score))
+        # Determine the event collar (color) using your volatility scoring logic.
+        collar = self.get_volatility_color(score)
         
-        print(f"Added event for day {calendar_day}: {description} with score of {score} and color {color}\n")
-    
-    return events
+        # Store the event with full date information.
+        event = {
+            "date": event_dt,
+            "description": desc,
+            "score": score,
+            "collar": collar
+        }
+        self.events.append(event)
+        
+        print(f"Added event for {event_dt.strftime('%d/%m/%Y')}: {desc} with score {score} and collar {collar}")
+        
+        # Clear input fields.
+        self.event_date_entry.delete(0, tk.END)
+        self.event_desc_entry.delete(0, tk.END)
+        self.zscore_dates_entry.delete(0, tk.END)
+        
+        # Refresh the calendar display.
+        self.update_calendar(self.current_month)
 
-# Example usage:
-events = input_events()
-
-# Example usage:
-year = 2025
-month = 3
-# Each event: (event_description, event_comment_color, volatility_score)
-
- # Example date in DDMMYY format
-print_crypto_volatility_calendar(year, month, events)
-
+if __name__ == "__main__":
+    app = VolatilityCalendarApp()
+    app.mainloop()

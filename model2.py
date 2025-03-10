@@ -6,8 +6,7 @@ import pickle
 from sklearn.gaussian_process import GaussianProcessRegressor
 from sklearn.gaussian_process.kernels import RBF, WhiteKernel
 from sklearn.model_selection import GridSearchCV
-from sklearn.metrics import make_scorer
-from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import make_scorer, mean_absolute_error, mean_squared_error, r2_score
 from sklearn.svm import SVR
 from sklearn.ensemble import RandomForestRegressor
 from xgboost import XGBRegressor
@@ -16,9 +15,25 @@ from sklearn.neighbors import KNeighborsRegressor
 from catboost import CatBoostRegressor
 from sklearn.neural_network import MLPRegressor
 
-
 def mape(y_true, y_pred):
+    """ Mean Absolute Percentage Error (MAPE) """
     return np.mean(np.abs((y_true - y_pred) / y_true)) * 100
+
+def smape(y_true, y_pred):
+    """ Symmetric Mean Absolute Percentage Error (SMAPE) """
+    return np.mean(2 * np.abs(y_true - y_pred) / (np.abs(y_true) + np.abs(y_pred))) * 100
+
+def wmape(y_true, y_pred):
+    """ Weighted Mean Absolute Percentage Error (WMAPE) """
+    return np.sum(np.abs(y_true - y_pred)) / np.sum(np.abs(y_true)) * 100
+
+def rmse(y_true, y_pred):
+    """ Root Mean Squared Error (RMSE) """
+    return np.sqrt(mean_squared_error(y_true, y_pred))
+
+def r2(y_true, y_pred):
+    """ R² Score """
+    return r2_score(y_true, y_pred)
 
 def prepare_dataset():
     CACHE_FILE = "volatility_cache.pkl"
@@ -67,11 +82,6 @@ def prepare_dataset():
 
     return train_set, test_set
 
-def model_test(model, X_test, y_test):
-    y_pred = model.predict(X_test)
-    test_mape = mape(y_test, y_pred)
-    return test_mape
-
 def grid_search(model, param, scorer, X_train, y_train, ):
     grid_search = GridSearchCV(
         model, param, cv=5, scoring=scorer, verbose=2, n_jobs=-1, return_train_score=True
@@ -80,6 +90,20 @@ def grid_search(model, param, scorer, X_train, y_train, ):
 
     return grid_search.best_estimator_, grid_search.best_params_, -grid_search.best_score_
 
+def evaluate_model(y_true, y_pred):
+    """ Compute multiple performance metrics """
+    return {
+        "MAPE": mape(y_true, y_pred),
+        "SMAPE": smape(y_true, y_pred),
+        "WMAPE": wmape(y_true, y_pred),
+        "RMSE": rmse(y_true, y_pred),
+        "MAE": mean_absolute_error(y_true, y_pred),
+        "R2 Score": r2(y_true, y_pred)
+    }
+
+def model_test(model, X_test, y_test):
+    y_pred = model.predict(X_test)
+    return evaluate_model(y_test, y_pred)
 
 if __name__ == "__main__":
     train_set, test_set = prepare_dataset()
@@ -99,8 +123,7 @@ if __name__ == "__main__":
         "optimizer": ["fmin_l_bfgs_b", None]
     }
     best_model, best_param, best_score = grid_search(gpr, param_grid, mape_scorer, X_train, y_train)
-    test_mape = model_test(best_model, X_test, y_test)
-    result.update({"GBR": [best_model, best_param, best_score, test_mape]})
+    result.update({"GBR": [best_model, best_param, best_score, model_test(best_model, X_test, y_test)]})
     
     svr = SVR()
     param_grid = {
@@ -110,8 +133,7 @@ if __name__ == "__main__":
         "kernel": ["rbf", "poly", "sigmoid"]
     }
     best_model, best_param, best_score = grid_search(svr, param_grid, mape_scorer, X_train, y_train)
-    test_mape = model_test(best_model, X_test, y_test)
-    result.update({"SVR": [best_model, best_param, best_score, test_mape]})
+    result.update({"SVR": [best_model, best_param, best_score, model_test(best_model, X_test, y_test)]})
 
     rf = RandomForestRegressor(random_state=42)
     param_grid = {
@@ -122,8 +144,7 @@ if __name__ == "__main__":
         "max_features": ["sqrt", "log2", None]
     }
     best_model, best_param, best_score = grid_search(rf, param_grid, mape_scorer, X_train, y_train)
-    test_mape = model_test(best_model, X_test, y_test)
-    result.update({"RF": [best_model, best_param, best_score, test_mape]})
+    result.update({"RF": [best_model, best_param, best_score, model_test(best_model, X_test, y_test)]})
 
     knn = KNeighborsRegressor()
     param_grid = {
@@ -132,8 +153,7 @@ if __name__ == "__main__":
         "metric": ["euclidean", "manhattan", "minkowski"]
     }
     best_model, best_param, best_score = grid_search(knn, param_grid, mape_scorer, X_train, y_train)
-    test_mape = model_test(best_model, X_test, y_test)
-    result.update({"KNN": [best_model, best_param, best_score, test_mape]})
+    result.update({"KNN": [best_model, best_param, best_score, model_test(best_model, X_test, y_test)]})
 
     xgb = XGBRegressor(random_state=42)
     param_grid = {
@@ -144,8 +164,7 @@ if __name__ == "__main__":
         "colsample_bytree": [0.6, 0.8, 1.0]
     }
     best_model, best_param, best_score = grid_search(xgb, param_grid, mape_scorer, X_train, y_train)
-    test_mape = model_test(best_model, X_test, y_test)
-    result.update({"XGB": [best_model, best_param, best_score, test_mape]})
+    result.update({"XGB": [best_model, best_param, best_score, model_test(best_model, X_test, y_test)]})
 
     lgbm = LGBMRegressor()
     param_grid = {
@@ -156,8 +175,7 @@ if __name__ == "__main__":
         "subsample": [0.6, 0.8, 1.0]
     }
     best_model, best_param, best_score = grid_search(lgbm, param_grid, mape_scorer, X_train, y_train)
-    test_mape = model_test(best_model, X_test, y_test)
-    result.update({"LGBM": [best_model, best_param, best_score, test_mape]})
+    result.update({"LGBM": [best_model, best_param, best_score, model_test(best_model, X_test, y_test)]})
 
     catboost = CatBoostRegressor(verbose=0)
     param_grid = {
@@ -167,8 +185,7 @@ if __name__ == "__main__":
         "l2_leaf_reg": [1, 3, 5, 10]
     }
     best_model, best_param, best_score = grid_search(catboost, param_grid, mape_scorer, X_train, y_train)
-    test_mape = model_test(best_model, X_test, y_test)
-    result.update({"CatBoost": [best_model, best_param, best_score, test_mape]})
+    result.update({"CatBoost": [best_model, best_param, best_score, model_test(best_model, X_test, y_test)]})
 
     mlp = MLPRegressor(max_iter=500)
     param_grid = {
@@ -178,12 +195,12 @@ if __name__ == "__main__":
         "learning_rate": ["constant", "adaptive"]
     }
     best_model, best_param, best_score = grid_search(mlp, param_grid, mape_scorer, X_train, y_train)
-    test_mape = model_test(best_model, X_test, y_test)
-    result.update({"MLP": [best_model, best_param, best_score, test_mape]})
+    result.update({"MLP": [best_model, best_param, best_score, model_test(best_model, X_test, y_test)]})
 
     for key, value in result.items():
         print(f"{key}")
         print(f"\tBest param: {value[1]}")
         print(f"\tBest MAPE score: {value[2]}")
-        print(f"\tTest MAPE score: {value[3]}")
-
+        print(f"\tTest scores")
+        for key2, value2 in value[3].items():
+            print(f"\t\t{key2}: {value2}")

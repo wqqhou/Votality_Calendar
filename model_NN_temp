@@ -1,0 +1,143 @@
+import tensorflow as tf
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Conv1D, SimpleRNN, GRU, LSTM, Dense, Flatten, Dropout, BatchNormalization, Attention
+from tensorflow.keras.optimizers import AdamW
+from tensorflow.keras.callbacks import EarlyStopping
+import numpy as np
+from model_ML import prepare_dataset, evaluate_model
+
+# Load dataset
+train_set, test_set = prepare_dataset()
+
+# Extract features and labels
+X_train = train_set.iloc[:, :-1].values
+y_train = train_set.iloc[:, -1].values
+X_test = test_set.iloc[:, :-1].values
+y_test = test_set.iloc[:, -1].values
+
+# Reshape for Neural Networks (samples, timesteps, features)
+X_train_nn = X_train.reshape(X_train.shape[0], X_train.shape[1], 1)
+X_test_nn = X_test.reshape(X_test.shape[0], X_test.shape[1], 1)
+
+def build_cnn(input_shape):
+    model = Sequential([
+        Conv1D(filters=8, kernel_size=3, activation="swish", kernel_regularizer=tf.keras.regularizers.l2(0.01), input_shape=input_shape),
+        BatchNormalization(),
+        Dropout(0.4),
+        Flatten(),
+        Dense(16, activation="swish"),
+        Dense(1)
+    ])
+    model.compile(optimizer=AdamW(learning_rate=0.0003), loss="mse")
+    return model
+
+def build_lstm(input_shape):
+    model = Sequential([
+        LSTM(8, activation="swish", return_sequences=True, input_shape=input_shape),  
+        BatchNormalization(),
+        Dropout(0.5),  # Increased dropout to avoid overfitting
+        LSTM(4, activation="swish"),
+        Dropout(0.4),
+        Dense(8, activation="swish"),
+        Dense(1)
+    ])
+    model.compile(optimizer=AdamW(learning_rate=0.0003), loss="mse")
+    return model
+
+def build_cnn_lstm(input_shape):
+    model = Sequential([
+        Conv1D(filters=8, kernel_size=3, activation="swish", input_shape=input_shape),
+        BatchNormalization(),
+        LSTM(8, activation="swish"),
+        Dropout(0.4),
+        Dense(8, activation="swish"),
+        Dense(1)
+    ])
+    model.compile(optimizer=AdamW(learning_rate=0.0003), loss="mse")
+    return model
+
+def build_rnn(input_shape):
+    model = Sequential([
+        SimpleRNN(12, activation="swish", return_sequences=False, input_shape=input_shape),  # Increased to 12 units
+        BatchNormalization(),
+        Dropout(0.3),  
+        Dense(8, activation="swish"),
+        Dense(1)
+    ])
+    model.compile(optimizer=AdamW(learning_rate=0.0003), loss="mse")
+    return model
+
+def build_gru(input_shape):
+    model = Sequential([
+        GRU(12, activation="swish", return_sequences=False, input_shape=input_shape),
+        BatchNormalization(),
+        Dropout(0.3),
+        Dense(8, activation="swish"),
+        Dense(1)
+    ])
+    model.compile(optimizer=AdamW(learning_rate=0.0003), loss="mse")
+    return model
+
+def build_cnn_rnn(input_shape):
+    model = Sequential([
+        Conv1D(filters=8, kernel_size=3, activation="swish", input_shape=input_shape),
+        BatchNormalization(),
+        SimpleRNN(8, activation="swish"),
+        Dropout(0.4),
+        Dense(8, activation="swish"),
+        Dense(1)
+    ])
+    model.compile(optimizer=AdamW(learning_rate=0.0003), loss="mse")
+    return model
+
+def build_mlp(input_shape):
+    model = Sequential([
+        Dense(32, activation="swish", input_shape=(input_shape,)),
+        BatchNormalization(),
+        Dropout(0.4),
+        Dense(16, activation="swish"),
+        Dense(1)
+    ])
+    model.compile(optimizer=AdamW(learning_rate=0.0003), loss="mse")
+    return model
+
+def train_and_evaluate(model, model_name, X_train, y_train, X_test, y_test):
+    print(f"Training {model_name}...")
+    early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+
+    # Train model
+    model.fit(X_train, y_train, epochs=50, batch_size=16, validation_data=(X_test, y_test), callbacks=[early_stopping], verbose=2)
+
+    # Predict and evaluate
+    y_pred = model.predict(X_test)
+    results = evaluate_model(y_test, y_pred.flatten())
+
+    return results
+
+if __name__ == "__main__":
+    models = {
+        "CNN": build_cnn((X_train_nn.shape[1], 1)),
+        "LSTM": build_lstm((X_train_nn.shape[1], 1)),
+        "CNN+LSTM": build_cnn_lstm((X_train_nn.shape[1], 1)),
+        "RNN": build_rnn((X_train_nn.shape[1], 1)),
+        "GRU": build_gru((X_train_nn.shape[1], 1)),  # New GRU Model
+        "CNN+RNN": build_cnn_rnn((X_train_nn.shape[1], 1)),  # New CNN+RNN Model
+        "MLP": build_mlp(X_train.shape[1])  # MLP does not require reshaping
+    }
+
+    # Reshape MLP input differently (doesn't need timesteps)
+    X_train_mlp = X_train
+    X_test_mlp = X_test
+
+    nn_results = {}
+    for model_name, model in models.items():
+        if model_name == "MLP":
+            nn_results[model_name] = train_and_evaluate(model, model_name, X_train_mlp, y_train, X_test_mlp, y_test)
+        else:
+            nn_results[model_name] = train_and_evaluate(model, model_name, X_train_nn, y_train, X_test_nn, y_test)
+
+    # Print results
+    for key, value in nn_results.items():
+        print(f"{key} test scores")
+        for key2, value2 in value.items():
+            print(f"\t{key2}: {value2}")

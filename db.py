@@ -34,7 +34,7 @@ def fetch_and_cache_volatility():
         # Construct URL (make sure the startTime parameter is set correctly)
         url = (f'https://open-api-v3.coinglass.com/api/price/ohlc-history'
                f'?exchange=Binance&symbol=BTCUSDT&type=spot&interval=4h&limit=6&startTime={start_timestamp}')
-        headers = {"CG-API-KEY": "b63276948277481d91ad3704def89fc8"}
+        headers = {"CG-API-KEY": ""}
         response = requests.get(url, headers=headers)
         price_history = response.json()
         
